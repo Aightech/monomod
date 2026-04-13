@@ -24,12 +24,15 @@ env/
 .ruff_cache/
 
 # Recordings / data
-*.csv
 *.h5
 *.hdf5
 *.npz
-!**/example_*.csv
 recordings/
+
+# CSV recordings only — keep config CSVs (e.g. partitions.csv)
+recordings/*.csv
+gui/*.csv
+**/recording_*.csv
 
 # Editors / OS
 .vscode/

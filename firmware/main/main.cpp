@@ -18,6 +18,8 @@
 #include "nvs_flash.h"
 #include "driver/spi_master.h"
 #include "driver/i2c_master.h"
+#include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
 
 #include "config.hpp"
 #include "ads1293.h"
@@ -242,8 +244,21 @@ static void handle_command(const uint8_t *packet, size_t pkt_len,
 extern "C" void app_main(void) {
     ESP_LOGI(TAG, "MONOMOD %s starting...", FW_VERSION_STR);
 
-    // Make stdin non-blocking so we can poll for serial commands in main loop
+    // Install the USB Serial/JTAG driver and route stdin/stdout through it.
+    // Without this, getchar() on the C3's built-in USB-Serial-JTAG returns
+    // EOF forever — which is what triggers `idf.py monitor`'s warning
+    // "please make sure application supports interactive". After the driver
+    // is installed, monitor's keystrokes (and lines sent by external scripts
+    // like provision_wifi.py) actually reach the firmware.
+    usb_serial_jtag_driver_config_t usb_jtag_cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+    usb_serial_jtag_driver_install(&usb_jtag_cfg);
+    usb_serial_jtag_vfs_use_driver();
+
+    // No buffering on stdin/stdout, no line conversion, non-blocking reads
     setvbuf(stdin, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);
+    usb_serial_jtag_vfs_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
+    usb_serial_jtag_vfs_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
     fcntl(fileno(stdin), F_SETFL, O_NONBLOCK);
 
     // 1. Initialize NVS
