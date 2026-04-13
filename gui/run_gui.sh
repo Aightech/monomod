@@ -8,7 +8,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
-MONOMOD_DRIVER="$SCRIPT_DIR/../../driver/monomod"
+MONOMOD_DRIVER="$SCRIPT_DIR/../driver"
 
 echo "=== MONOMOD GUI Runner ==="
 
