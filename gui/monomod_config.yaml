@@ -1,0 +1,201 @@
+# =============================================================================
+# MONOMOD Configuration File
+# =============================================================================
+#
+# A single YAML file describes:
+#   - Device metadata (name, WiFi credentials)
+#   - EMG acquisition: channel routing, resolution, decimation filters
+#   - IMU acquisition: enable flag, report rate
+#   - Multi-device session layout
+#   - Experiment metadata (subject, notes, markers) — saved with recordings
+#
+# The GUI's "Load YAML" button applies this config to every connected device.
+# The Python driver can also load it programmatically:
+#     from monomod.config import load_config, get_sample_rate
+#     cfg = load_config("monomod_config.yaml")
+#     rate_hz = get_sample_rate(cfg["emg"])
+#
+# Units: Hz = hertz, dps = degrees per second, g = gravitational acceleration.
+# Lines starting with "#" are comments. Edit values after the colon.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# device: identification
+# -----------------------------------------------------------------------------
+# Purely informational — helps you label recordings when multiple devices
+# are used together.
+device:
+  name:          "monomod-1"       # friendly name shown in the GUI
+  location:      "forearm-flexor"  # optional: where on the body
+  serial:        ""                # optional: device serial number
+  firmware_min:  "1.0.0"           # warn if the device runs older firmware
+
+
+# -----------------------------------------------------------------------------
+# wifi: station mode credentials
+# -----------------------------------------------------------------------------
+# When applied while a device is connected, the firmware stores these in NVS.
+# The device will use them for future boots too (persistent).
+wifi:
+  ssid:     "LabNetwork"
+  password: "changeme"
+  # country_code: "GB"   # not currently applied — firmware uses compile-time default
+
+
+# -----------------------------------------------------------------------------
+# emg: ADS1293 acquisition front-end settings
+# -----------------------------------------------------------------------------
+# The ADS1293 is a 3-channel, 24-bit ECG/EMG analog front-end.
+# Each channel has a differential input routed from 6 physical electrode pins.
+# A 3-stage decimation filter (R1 → R2 → R3) sets the output sample rate:
+#
+#     effective_sample_rate_Hz = base_freq_Hz / (R1 * R2 * R3)
+#
+# base_freq_Hz is 102400 (normal) or 204800 (high_freq=true).
+#
+# Useful presets (base = 102400, common for EMG):
+#     R1=2, R2=4,  R3=4   →  3200 Hz    (default, wide bandwidth)
+#     R1=2, R2=4,  R3=8   →  1600 Hz
+#     R1=2, R2=5,  R3=32  →   320 Hz    (good for surface EMG, low noise)
+#     R1=4, R2=8,  R3=128 →    25 Hz    (slow signals / ECG only)
+#     R1=2, R2=4,  R3=4 + high_freq=true → 6400 Hz (max rate)
+emg:
+
+  # ---- Channel routing ------------------------------------------------------
+  # Each of the 3 channels routes TWO electrode pins (differential pair).
+  # pos_input / neg_input are 1..6, mapping to the submodule's INP1..INP6.
+  # Typical bipolar layout:
+  #     electrode pair 1 (closest to target muscle)   → ch0 (pos=1, neg=2)
+  #     electrode pair 2 (slightly offset)            → ch1 (pos=3, neg=4)
+  #     electrode pair 3 (reference/background)       → ch2 (pos=5, neg=6)
+  # Set enabled=false to save power/bandwidth for unused channels.
+  # If pos_input == neg_input the chip goes into internal-short test mode.
+  # ---- Right-Leg Drive (RLD) ------------------------------------------------
+  # Attach an extra electrode on neutral skin (wrist, elbow bone, back of hand)
+  # and wire it to the IN pin selected below. The ADS1293 will drive the
+  # inverse of the common-mode voltage into that pin, cancelling 50/60 Hz hum.
+  # route:     0 = disabled; 1..6 = drive RLD into IN1..IN6
+  # bw_high:   false = 50 kHz (default), true = 200 kHz
+  # cap_drive: 0..3 = low / med-low / med-high / high (for shielded cables)
+  rld:
+    route: 6         # drive RLD into IN6
+    bw_high: false
+    cap_drive: 0
+
+  channels:
+    ch0: { enabled: true,  pos_input: 1, neg_input: 2 }
+    ch1: { enabled: true,  pos_input: 1, neg_input: 2 }
+    ch2: { enabled: true,  pos_input: 1, neg_input: 2 }
+
+  # ---- Resolution -----------------------------------------------------------
+  # high_res=true  → 24-bit precise output (read from DATA_CHx_ECG registers)
+  # high_res=false → 16-bit fast output   (read from DATA_CHx_PACE registers)
+  # High-res is almost always what you want for surface EMG research.
+  high_res: true
+
+  # ---- Sample-rate mode -----------------------------------------------------
+  # high_freq=false → base_freq_Hz = 102400 (default; enough for ≤6 kHz EMG)
+  # high_freq=true  → base_freq_Hz = 204800 (double rate; more noise)
+  high_freq: false
+
+  # ---- Decimation filter chain ---------------------------------------------
+  # R1: 2 or 4 (per channel — can be a single value to apply to all)
+  # R2: 4, 5, 6, or 8 (global, same for all channels)
+  # R3: 4, 6, 8, 12, 16, 32, 64, or 128 (per channel or global)
+  filters:
+    R1: 2
+    R2: 4
+    R3: 4
+
+  # ---- Clock source --------------------------------------------------------
+  # internal → use the ADS1293's built-in oscillator (default, easiest)
+  # external → expect a clock on CLK pin from the host (not common; unused)
+  clock: internal
+
+  # ---- (Advanced / not yet wired in firmware) ------------------------------
+  # lead_off_detect:  false   # impedance-based electrode contact detection
+  # wilson_to_in6:    false   # route Wilson reference to IN6 externally
+
+
+# -----------------------------------------------------------------------------
+# imu: ICM-20948 9-axis inertial sensor
+# -----------------------------------------------------------------------------
+# The Adafruit ICM-20948 reports accelerometer (±2g, 16384 LSB/g by default)
+# and gyroscope (±250 dps, 131 LSB/dps by default) at up to ~200 Hz.
+# The magnetometer isn't currently streamed (would require additional firmware).
+imu:
+  enabled:   true
+  rate_hz:   100     # typical: 50-200 Hz. Higher = more network + CPU.
+  # accel_range_g:  2      # 2, 4, 8, or 16. (not yet runtime-configurable)
+  # gyro_range_dps: 250    # 250, 500, 1000, or 2000. (not yet runtime-configurable)
+
+
+# -----------------------------------------------------------------------------
+# session: multi-device experiment layout
+# -----------------------------------------------------------------------------
+# For when you run several MONOMOD modules together. The GUI will connect to
+# each IP, apply per-device overrides (if any), and record everything into a
+# single CSV file with a device column.
+#
+# Each device inherits the top-level `emg`/`imu` settings unless it has its
+# own overrides here.
+session:
+  devices:
+    - ip:       "192.168.0.96"
+      name:     "monomod-forearm-1"
+      location: "flexor_carpi_radialis"
+      # emg: { ... }   # optional per-device override (same schema as top-level emg)
+
+    # - ip:       "192.168.0.97"
+    #   name:     "monomod-forearm-2"
+    #   location: "extensor_carpi_radialis"
+
+    # - ip:       "192.168.0.98"
+    #   name:     "monomod-biceps"
+    #   location: "biceps_brachii"
+
+
+# -----------------------------------------------------------------------------
+# experiment: metadata saved with every recording
+# -----------------------------------------------------------------------------
+# Written to the CSV header / HDF5 attributes for reproducibility.
+experiment:
+  subject_id:   "S01"                # anonymized subject identifier
+  session_id:   "baseline_01"        # run/trial number
+  date:         "auto"               # "auto" fills in today's date at recording
+  operator:     ""                   # who is running the recording
+  notes:        |                    # free text (multi-line with "|")
+    Baseline resting trial before MVC protocol.
+    Room temperature ~22°C. Electrodes: Ag/AgCl, 10 mm spacing.
+
+  # Structured marker/event definitions — referenced by keyboard shortcut
+  # in the GUI (not implemented yet; defined here for later).
+  markers:
+    "1": "trial_start"
+    "2": "contraction_start"
+    "3": "contraction_stop"
+    "4": "trial_end"
+    "0": "artifact"
+
+
+# -----------------------------------------------------------------------------
+# recording: output file preferences
+# -----------------------------------------------------------------------------
+recording:
+  format:        "csv"               # "csv" (wide) or "hdf5" (not yet implemented)
+  path_template: "monomod_{subject}_{session}_{timestamp}.csv"
+  include_imu:   true                # include IMU rows in the main CSV
+  # csv_layout:  "long"              # "long" (one row per sample per device)
+                                     # or "wide" (one row per time step) — not yet
+
+
+# -----------------------------------------------------------------------------
+# gui: display preferences applied at launch
+# -----------------------------------------------------------------------------
+gui:
+  default_view:      "EMG only"      # "EMG only" | "Accel only" | "Gyro only" | "All"
+  window_sec:        5.0             # horizontal time window shown on the plot
+  display_hz:        200             # plot refresh target (samples/s per curve)
+  channel_spacing:   100.0           # vertical separation between channel lanes
+  auto_scale_on_start: true

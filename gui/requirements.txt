@@ -1,0 +1,5 @@
+numpy
+pyyaml
+pyqt6
+pyqtgraph
+zeroconf

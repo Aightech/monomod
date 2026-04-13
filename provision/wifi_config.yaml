@@ -1,0 +1,33 @@
+# MONOMOD WiFi provisioning config
+#
+# This file is read by provision_wifi.py and the credentials are pushed
+# to the device over USB serial. The firmware stores them in NVS and
+# auto-connects on every boot afterward.
+#
+# You can list multiple networks — the script will send them all in order.
+# The device keeps the *last* one as the active network.
+#
+# Usage:
+#   python provision_wifi.py                 # uses wifi_config.yaml in CWD
+#   python provision_wifi.py -c other.yaml   # custom config
+#   python provision_wifi.py -p /dev/ttyACM0 # override serial port
+
+# Default serial port (override with -p / --port on the command line).
+# On Linux this is usually /dev/ttyACM0, on macOS /dev/cu.usbmodem*,
+# on Windows COM3 (or similar).
+port: /dev/ttyACM0
+baudrate: 115200
+
+# Seconds to wait for the device to come up after opening the port.
+# The firmware prints a banner then listens for WIFI+ADD:.
+boot_wait_s: 2.0
+
+# Networks to provision. The device keeps the LAST one as its active
+# connection, so list fallbacks first and the preferred network last.
+networks:
+  - ssid: "LabNetwork"
+    password: "labsecret"
+
+  # Example fallback / alternate network:
+  # - ssid: "PhoneHotspot"
+  #   password: "hotspotpass"

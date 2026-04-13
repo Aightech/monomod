@@ -1,0 +1,40 @@
+# ESP-IDF firmware
+firmware/build/
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock
+
+# Clangd / compile_commands
+.cache/
+compile_commands.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Recordings / data
+*.csv
+*.h5
+*.hdf5
+*.npz
+!**/example_*.csv
+recordings/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
