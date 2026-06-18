@@ -36,11 +36,15 @@ esp_err_t WifiProvisioning::save_credentials(const char *ssid, const char *passw
     esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
     if (ret != ESP_OK) return ret;
 
-    nvs_set_str(nvs, "ssid", ssid);
-    nvs_set_str(nvs, "pass", password);
-    nvs_commit(nvs);
+    ret = nvs_set_str(nvs, "ssid", ssid);
+    if (ret == ESP_OK) ret = nvs_set_str(nvs, "pass", password);
+    if (ret == ESP_OK) ret = nvs_commit(nvs);
     nvs_close(nvs);
 
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save credentials: %s", esp_err_to_name(ret));
+        return ret;
+    }
     ESP_LOGI(TAG, "Credentials saved for '%s'", ssid);
     return ESP_OK;
 }

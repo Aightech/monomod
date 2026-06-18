@@ -1,0 +1,24 @@
+menu "MONOMOD Board"
+
+choice MONOMOD_BOARD
+    prompt "Carrier board (D-label -> GPIO mapping)"
+    default MONOMOD_BOARD_XIAO_S3 if IDF_TARGET_ESP32S3
+    default MONOMOD_BOARD_XIAO_C3
+    help
+        Select the carrier board. This only changes how the silk "D" labels map
+        to GPIO numbers (see monomod_board/include/board_pins.h); firmware refers
+        to D-labels so the same code builds for any board. The default tracks the
+        build target (XIAO ESP32-S3 for esp32s3, XIAO ESP32-C3 otherwise).
+
+    config MONOMOD_BOARD_XIAO_C3
+        bool "Seeed XIAO ESP32-C3"
+
+    config MONOMOD_BOARD_SUPERMINI_C3
+        bool "ESP32-C3 Super Mini"
+
+    config MONOMOD_BOARD_XIAO_S3
+        bool "Seeed XIAO ESP32-S3"
+
+endchoice
+
+endmenu

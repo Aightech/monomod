@@ -59,7 +59,7 @@ static MonomodRingBuffer g_ring_buffer;
 static icm20948_t      g_imu;
 static i2c_master_bus_handle_t g_i2c_bus = NULL;
 
-static axon_device_state_t g_state = AXON_STATE_BOOT;
+static monomod_device_state_t g_state = MONOMOD_STATE_BOOT;
 // (packet stats tracked by NetworkManager and ring buffer)
 
 // Task handles
@@ -79,64 +79,64 @@ static WifiProvisioning g_wifi;
 static void handle_command(const uint8_t *packet, size_t pkt_len,
                            uint8_t *response, size_t *resp_len) {
     // packet includes header (9 bytes) + payload; CRC already stripped
-    if (pkt_len < AXON_HEADER_SIZE + 1) return;
+    if (pkt_len < MONOMOD_HEADER_SIZE + 1) return;
 
-    const uint8_t *payload = packet + AXON_HEADER_SIZE;
-    size_t len = pkt_len - AXON_HEADER_SIZE;
+    const uint8_t *payload = packet + MONOMOD_HEADER_SIZE;
+    size_t len = pkt_len - MONOMOD_HEADER_SIZE;
 
     uint8_t cmd_id = payload[0];
     const uint8_t *params = payload + 1;
     size_t params_len = len - 1;
 
     // Build response header
-    axon_header_t *rhdr = (axon_header_t *)response;
-    rhdr->magic = AXON_MAGIC;
-    rhdr->type = AXON_TYPE_ACK;
+    monomod_header_t *rhdr = (monomod_header_t *)response;
+    rhdr->magic = MONOMOD_MAGIC;
+    rhdr->type = MONOMOD_TYPE_ACK;
     rhdr->seq = 0;
-    rhdr->timestamp = axon::get_timestamp_us();
-    uint8_t *rpayload = response + AXON_HEADER_SIZE;
+    rhdr->timestamp = monomod::get_timestamp_us();
+    uint8_t *rpayload = response + MONOMOD_HEADER_SIZE;
 
     // Default: ACK with success
-    axon_ack_payload_t ack = { .cmd_id = cmd_id, .status = AXON_ACK_SUCCESS };
+    monomod_ack_payload_t ack = { .cmd_id = cmd_id, .status = MONOMOD_ACK_SUCCESS };
 
     switch (cmd_id) {
-        case AXON_CMD_PING:
+        case MONOMOD_CMD_PING:
             ESP_LOGI(TAG, "PING");
             break;
 
-        case AXON_CMD_GET_INFO: {
-            axon_device_info_t info = {};
+        case MONOMOD_CMD_GET_INFO: {
+            monomod_device_info_t info = {};
             info.fw_major = FW_VERSION_MAJ;
             info.fw_minor = FW_VERSION_MIN;
             info.fw_patch = FW_VERSION_PATCH;
-            info.features = AXON_FEATURE_IMU;
+            info.features = MONOMOD_FEATURE_IMU;
             if (g_emg_module == EMG_MODULE_INA_LIS) {
-                info.adc_type = AXON_ADC_TYPE_INA;
-                info.num_channels = AXON_INA_NUM_CHANNELS;
-                info.sample_size = AXON_INA_SAMPLE_SIZE;
+                info.adc_type = MONOMOD_ADC_TYPE_INA;
+                info.num_channels = MONOMOD_INA_NUM_CHANNELS;
+                info.sample_size = MONOMOD_INA_SAMPLE_SIZE;
                 info.max_sample_rate = 4000;
             } else {
                 // Default: ADS1293 (also works as fallback when nothing detected)
-                info.adc_type = AXON_ADC_TYPE_ADS1293;
+                info.adc_type = MONOMOD_ADC_TYPE_ADS1293;
                 info.num_channels = ADS1293_NUM_CHANNELS;
-                info.sample_size = AXON_ADS1293_SAMPLE_SIZE;
+                info.sample_size = MONOMOD_ADS1293_SAMPLE_SIZE;
                 info.max_sample_rate = 25600;
             }
             memcpy(rpayload, &ack, sizeof(ack));
             memcpy(rpayload + sizeof(ack), &info, sizeof(info));
-            *resp_len = AXON_HEADER_SIZE + sizeof(ack) + sizeof(info);
+            *resp_len = MONOMOD_HEADER_SIZE + sizeof(ack) + sizeof(info);
             return;
         }
 
-        case AXON_CMD_START: {
-            if (g_state == AXON_STATE_STREAMING) {
-                ack.status = AXON_ACK_BUSY;
+        case MONOMOD_CMD_START: {
+            if (g_state == MONOMOD_STATE_STREAMING) {
+                ack.status = MONOMOD_ACK_BUSY;
                 break;
             }
             // Parse start params
-            if (params_len >= sizeof(axon_cmd_start_params_t)) {
-                const axon_cmd_start_params_t *sp =
-                    (const axon_cmd_start_params_t *)params;
+            if (params_len >= sizeof(monomod_cmd_start_params_t)) {
+                const monomod_cmd_start_params_t *sp =
+                    (const monomod_cmd_start_params_t *)params;
                 ESP_LOGI(TAG, "START: rate=%lu ch_mask=0x%08lx",
                          sp->sample_rate, sp->ch_mask);
                 // TODO: apply sample rate and channel mask to config
@@ -149,7 +149,7 @@ static void handle_command(const uint8_t *packet, size_t pkt_len,
             if (g_emg_module == EMG_MODULE_ADS1293) {
                 // Configure and start ADS1293
                 if (ads1293_configure(&g_adc, &g_adc_config) != ESP_OK) {
-                    ack.status = AXON_ACK_HW_ERROR;
+                    ack.status = MONOMOD_ACK_HW_ERROR;
                     break;
                 }
                 ads1293_start(&g_adc);
@@ -157,13 +157,13 @@ static void handle_command(const uint8_t *packet, size_t pkt_len,
             } else if (g_emg_module == EMG_MODULE_INA_LIS) {
                 // Start the ADC continuous conversion + INA acq task
                 if (ina_emg_start(&g_ina) != ESP_OK) {
-                    ack.status = AXON_ACK_HW_ERROR;
+                    ack.status = MONOMOD_ACK_HW_ERROR;
                     break;
                 }
                 acq_task_start_ina(&g_ina, &g_ring_buffer, g_tx_sem, &g_acq_task);
             } else {
                 ESP_LOGE(TAG, "No EMG module detected — cannot START");
-                ack.status = AXON_ACK_HW_ERROR;
+                ack.status = MONOMOD_ACK_HW_ERROR;
                 break;
             }
 
@@ -172,12 +172,12 @@ static void handle_command(const uint8_t *packet, size_t pkt_len,
                 imu_task_start(&g_imu, &g_net, 100, &g_imu_task);
             }
 
-            g_state = AXON_STATE_STREAMING;
+            g_state = MONOMOD_STATE_STREAMING;
             break;
         }
 
-        case AXON_CMD_STOP: {
-            if (g_state != AXON_STATE_STREAMING) break;
+        case MONOMOD_CMD_STOP: {
+            if (g_state != MONOMOD_STATE_STREAMING) break;
 
             // Stop tasks
             if (g_emg_module == EMG_MODULE_ADS1293) {
@@ -193,25 +193,29 @@ static void handle_command(const uint8_t *packet, size_t pkt_len,
             g_tx_task = NULL;
             g_imu_task = NULL;
 
-            g_state = AXON_STATE_IDLE;
+            g_state = MONOMOD_STATE_IDLE;
             ESP_LOGI(TAG, "STOP");
             break;
         }
 
-        case AXON_CMD_READ_REGISTER: {
-            if (params_len < 1) { ack.status = AXON_ACK_INVALID_PARAM; break; }
+        case MONOMOD_CMD_READ_REGISTER: {
+            // These operate on the ADS1293 SPI handle; reject when the detected
+            // module isn't an ADS1293 (g_adc.spi is NULL → would panic).
+            if (g_emg_module != EMG_MODULE_ADS1293) { ack.status = MONOMOD_ACK_NOT_SUPPORTED; break; }
+            if (params_len < 1) { ack.status = MONOMOD_ACK_INVALID_PARAM; break; }
             uint8_t reg = params[0];
             uint8_t val = ads1293_read_reg(&g_adc, reg);
-            axon_read_reg_response_t rr = { .reg_addr = reg, .value = val };
+            monomod_read_reg_response_t rr = { .reg_addr = reg, .value = val };
             memcpy(rpayload, &ack, sizeof(ack));
             memcpy(rpayload + sizeof(ack), &rr, sizeof(rr));
-            *resp_len = AXON_HEADER_SIZE + sizeof(ack) + sizeof(rr);
+            *resp_len = MONOMOD_HEADER_SIZE + sizeof(ack) + sizeof(rr);
             ESP_LOGI(TAG, "READ_REG 0x%02X = 0x%02X", reg, val);
             return;
         }
 
-        case AXON_CMD_WRITE_REGISTER: {
-            if (params_len < 2) { ack.status = AXON_ACK_INVALID_PARAM; break; }
+        case MONOMOD_CMD_WRITE_REGISTER: {
+            if (g_emg_module != EMG_MODULE_ADS1293) { ack.status = MONOMOD_ACK_NOT_SUPPORTED; break; }
+            if (params_len < 2) { ack.status = MONOMOD_ACK_INVALID_PARAM; break; }
             uint8_t reg = params[0];
             uint8_t val = params[1];
             ads1293_write_reg(&g_adc, reg, val);
@@ -219,22 +223,22 @@ static void handle_command(const uint8_t *packet, size_t pkt_len,
             break;
         }
 
-        case AXON_CMD_REBOOT:
+        case MONOMOD_CMD_REBOOT:
             ESP_LOGI(TAG, "REBOOT requested");
             memcpy(rpayload, &ack, sizeof(ack));
-            *resp_len = AXON_HEADER_SIZE + sizeof(ack);
+            *resp_len = MONOMOD_HEADER_SIZE + sizeof(ack);
             vTaskDelay(pdMS_TO_TICKS(100));
             esp_restart();
             return;
 
         default:
             ESP_LOGW(TAG, "Unknown cmd 0x%02X", cmd_id);
-            ack.status = AXON_ACK_NOT_SUPPORTED;
+            ack.status = MONOMOD_ACK_NOT_SUPPORTED;
             break;
     }
 
     memcpy(rpayload, &ack, sizeof(ack));
-    *resp_len = AXON_HEADER_SIZE + sizeof(ack);
+    *resp_len = MONOMOD_HEADER_SIZE + sizeof(ack);
 }
 
 // =============================================================================
@@ -351,11 +355,11 @@ extern "C" void app_main(void) {
 
     // Go to IDLE if any EMG module was detected; otherwise ERROR (but WiFi
     // and provisioning continue to work for diagnosis).
-    g_state = (g_emg_module != EMG_MODULE_NONE) ? AXON_STATE_IDLE : AXON_STATE_ERROR;
+    g_state = (g_emg_module != EMG_MODULE_NONE) ? MONOMOD_STATE_IDLE : MONOMOD_STATE_ERROR;
 
     ESP_LOGI(TAG, "Init complete. WiFi: %s, State: %s",
              g_wifi.is_connected() ? "connected" : "disconnected",
-             g_state == AXON_STATE_IDLE ? "IDLE" : "ERROR");
+             g_state == MONOMOD_STATE_IDLE ? "IDLE" : "ERROR");
 
     ESP_LOGI(TAG, "Serial commands: WIFI+ADD:ssid,password | WIFI+STATUS");
 
@@ -395,7 +399,7 @@ extern "C" void app_main(void) {
 
         // Periodic status log (every 5s when streaming)
         uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-        if (g_state == AXON_STATE_STREAMING && (now - last_status_ms) >= 5000) {
+        if (g_state == MONOMOD_STATE_STREAMING && (now - last_status_ms) >= 5000) {
             last_status_ms = now;
             ESP_LOGI(TAG, "Streaming: ring=%u/%u overflow=%lu udp=%lu err=%lu",
                      (unsigned)g_ring_buffer.size(),

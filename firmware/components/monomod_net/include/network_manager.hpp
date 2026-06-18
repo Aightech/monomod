@@ -2,7 +2,7 @@
  * @file network_manager.hpp
  * @brief Network Manager — UDP streaming + TCP control + mDNS discovery
  *
- * Adapted from axonCtrl NetworkManager for MONOMOD.
+ * Adapted from MONOMOD NetworkManager for MONOMOD.
  */
 
 #pragma once
@@ -16,11 +16,11 @@
 #include "packet_types.h"
 
 struct NetworkConfig {
-    uint16_t udp_port = AXON_UDP_DATA_PORT;     // 5000
-    uint16_t tcp_port = AXON_TCP_CTRL_PORT;     // 5001
+    uint16_t udp_port = MONOMOD_UDP_DATA_PORT;     // 5000
+    uint16_t tcp_port = MONOMOD_TCP_CTRL_PORT;     // 5001
     const char *hostname = "monomod";
-    uint8_t adc_type = AXON_ADC_TYPE_ADS1293;
-    uint8_t num_channels = AXON_ADS1293_NUM_CHANNELS;
+    uint8_t adc_type = MONOMOD_ADC_TYPE_ADS1293;
+    uint8_t num_channels = MONOMOD_ADS1293_NUM_CHANNELS;
 };
 
 using CommandCallback = std::function<void(const uint8_t *data, size_t len,
@@ -56,6 +56,11 @@ public:
     uint32_t udp_packets_sent() const { return udp_sent_; }
     uint32_t udp_send_errors() const { return udp_err_; }
 
+    // Set when a UDP send fails with a link-down errno (ENETDOWN/EHOSTUNREACH);
+    // the app polls this to stop streaming and recover. Cleared on STOP/reconnect.
+    bool link_error() const { return link_error_; }
+    void clear_link_error() { link_error_ = false; }
+
 private:
     esp_err_t init_udp();
     esp_err_t init_tcp();
@@ -82,9 +87,11 @@ private:
 
     CommandCallback cmd_callback_;
 
-    uint8_t rx_buf_[512];
-    uint8_t tx_buf_[512];
+    // Sized to the full protocol max so large/segmented packets aren't truncated.
+    uint8_t rx_buf_[MONOMOD_MAX_PACKET_SIZE];
+    uint8_t tx_buf_[MONOMOD_MAX_PACKET_SIZE];
 
     uint32_t udp_sent_ = 0;
     uint32_t udp_err_ = 0;
+    volatile bool link_error_ = false;
 };

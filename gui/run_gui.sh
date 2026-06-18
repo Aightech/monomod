@@ -12,10 +12,21 @@ MONOMOD_DRIVER="$SCRIPT_DIR/../driver"
 
 echo "=== MONOMOD GUI Runner ==="
 
-# Create virtual environment if it doesn't exist
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv "$VENV_DIR"
+# Create (or repair) the virtual environment.
+# Detect a partial/broken .venv (e.g. left behind by a failed creation) by
+# checking for the activate script rather than just the directory.
+if [ ! -f "$VENV_DIR/bin/activate" ]; then
+    if [ -d "$VENV_DIR" ]; then
+        echo "Existing .venv is incomplete — recreating..."
+        rm -rf "$VENV_DIR"
+    fi
+    echo "Creating virtual environment at $VENV_DIR..."
+    if ! python3 -m venv "$VENV_DIR"; then
+        echo "ERROR: could not create the virtual environment." >&2
+        echo "On Debian/Ubuntu, install the venv module first:" >&2
+        echo "    sudo apt install python3-venv" >&2
+        exit 1
+    fi
     echo "Virtual environment created at $VENV_DIR"
 fi
 

@@ -21,6 +21,17 @@ extern "C" {
 #define LIS3DH_WHOAMI       0x33
 #define LIS3DH_REG_WHOAMI   0x0F
 
+// Auxiliary ADC (3 inputs; ADC1 = pin used for the amplified EMG signal).
+// 10-bit, left-justified two's complement, output rate == accelerometer ODR.
+#define LIS3DH_REG_OUT_ADC1_L   0x08
+#define LIS3DH_REG_TEMP_CFG     0x1F   // bit7 ADC_EN, bit6 TEMP_EN
+
+// CTRL_REG1 ODR codes (bits [7:4])
+#define LIS3DH_ODR_100HZ        0x5
+#define LIS3DH_ODR_200HZ        0x6
+#define LIS3DH_ODR_400HZ        0x7
+#define LIS3DH_ODR_1344HZ       0x9    // 1.344 kHz in normal mode
+
 typedef struct {
     spi_device_handle_t spi;
     bool initialized;
@@ -59,6 +70,24 @@ esp_err_t lis3dh_enable(lis3dh_t *dev);
  * @brief Read latest accelerometer sample (raw int16, LSB/16384 ≈ 1 g).
  */
 esp_err_t lis3dh_read_accel(lis3dh_t *dev, int16_t *x, int16_t *y, int16_t *z);
+
+/**
+ * @brief Set the output data rate (CTRL_REG1 ODR field), keeping X/Y/Z enabled,
+ * normal (high-res capable) mode. Use e.g. LIS3DH_ODR_1344HZ for EMG.
+ */
+esp_err_t lis3dh_set_odr(lis3dh_t *dev, uint8_t odr_code);
+
+/**
+ * @brief Enable the auxiliary ADC (ADC_EN in TEMP_CFG_REG). Required before
+ * reading ADC1. The device must already be out of power-down (ODR != 0).
+ */
+esp_err_t lis3dh_enable_adc(lis3dh_t *dev);
+
+/**
+ * @brief Read auxiliary input ADC1 (raw int16, 10-bit left-justified two's
+ * complement). On this board ADC1 carries the amplified EMG signal.
+ */
+esp_err_t lis3dh_read_adc1(lis3dh_t *dev, int16_t *out);
 
 #ifdef __cplusplus
 }

@@ -2,9 +2,10 @@
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "board_pins.h"   // silk D-label -> GPIO map (XIAO / Super Mini)
 
 // =============================================================================
-// MONOMOD Board Configuration — XIAO ESP32-C3
+// MONOMOD Board Configuration (pins via silk D-labels; see monomod_board)
 // =============================================================================
 
 #define BOARD_NAME      "MONOMOD_C3"
@@ -16,18 +17,18 @@
 // -----------------------------------------------------------------------------
 // ADS1293 SPI — SPI2_HOST (only user SPI available on C3)
 // -----------------------------------------------------------------------------
-#define PIN_ADS_MOSI    GPIO_NUM_9      // D9 / PICO
-#define PIN_ADS_MISO    GPIO_NUM_10     // D10 / POCI
-#define PIN_ADS_SCLK    GPIO_NUM_8      // D8
-#define PIN_ADS_CS      GPIO_NUM_20     // D7
+#define PIN_ADS_MOSI    PIN_D9          // PICO
+#define PIN_ADS_MISO    PIN_D10         // POCI
+#define PIN_ADS_SCLK    PIN_D8
+#define PIN_ADS_CS      PIN_D7
 #define ADS_SPI_HOST    SPI2_HOST
 #define ADS_SPI_FREQ_HZ 4000000         // 4 MHz (conservative; ADS1293 max 20 MHz)
 
 // -----------------------------------------------------------------------------
-// ICM-20948 I2C (Adafruit breakout)
+// ICM-20948 I2C (Adafruit breakout) — cast to gpio_num_t for the I2C bus config
 // -----------------------------------------------------------------------------
-#define PIN_I2C_SDA       GPIO_NUM_6    // D4
-#define PIN_I2C_SCL       GPIO_NUM_7    // D5
+#define PIN_I2C_SDA       ((gpio_num_t)PIN_D4)
+#define PIN_I2C_SCL       ((gpio_num_t)PIN_D5)
 #define I2C_FREQ_HZ       400000        // 400 kHz
 #define IMU_I2C_ADDR      0x69          // Adafruit breakout default (AD0 high)
                                         // Use 0x68 if AD0 jumper is cut

@@ -6,7 +6,7 @@
  * Initial value: 0xFFFF
  * No final XOR
  *
- * This is the standard CRC-16-CCITT used by AxonCtrl protocol.
+ * This is the standard CRC-16-CCITT used by MONOMOD protocol.
  */
 
 #pragma once

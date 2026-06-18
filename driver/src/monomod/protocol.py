@@ -1,10 +1,11 @@
 """
-Axon protocol packet building and parsing for MONOMOD.
+MONOMOD protocol packet building and parsing for MONOMOD.
 
 Packet format: [MAGIC:2][TYPE:1][SEQ:2][TS_US:4][PAYLOAD:N][CRC16:2]
 """
 
 import struct
+import numpy as np
 
 # Protocol constants
 MAGIC = 0xAE01
@@ -115,13 +116,11 @@ def parse_ack(payload: bytes) -> dict:
 
 
 def parse_data_packet(payload: bytes) -> dict | None:
-    """Parse DATA_RAW payload → (ch_mask, n_samples, adc_type, samples).
+    """Parse DATA_RAW payload → {ch_mask, n_samples, adc_type, samples}.
 
-    Returns dict with:
-        ch_mask: int
-        n_samples: int
-        adc_type: int
-        samples: list of list[int] — [n_samples][n_channels]
+    `samples` is an np.ndarray[n_samples, n_channels] of int32 (big-endian ADC
+    words, sign-extended). Vectorized with numpy — no per-sample Python loop —
+    because the shared receiver parses every device's packets on one thread.
     """
     if len(payload) < 6:
         return None
@@ -129,39 +128,29 @@ def parse_data_packet(payload: bytes) -> dict | None:
     n_channels = bin(ch_mask).count("1")
 
     if adc_type == ADC_TYPE_ADS1293:
-        sample_size = ADS1293_SAMPLE_SIZE
+        sample_size = ADS1293_SAMPLE_SIZE      # 3 bytes, 24-bit
     elif adc_type == ADC_TYPE_INA:
-        sample_size = INA_SAMPLE_SIZE
+        sample_size = INA_SAMPLE_SIZE          # 2 bytes, 16-bit
     else:
         return None  # unsupported
 
-    data = payload[6:]
     expected = n_channels * n_samples * sample_size
+    data = payload[6:6 + expected]
     if len(data) < expected:
         return None
 
-    samples = []
-    offset = 0
-    for _ in range(n_samples):
-        frame = []
-        for _ in range(n_channels):
-            if sample_size == 3:
-                # 24-bit big-endian, sign-extend
-                b0, b1, b2 = data[offset], data[offset + 1], data[offset + 2]
-                val = (b0 << 16) | (b1 << 8) | b2
-                if val & 0x800000:
-                    val |= ~0xFFFFFF
-            elif sample_size == 2:
-                # 16-bit big-endian, sign-extend
-                b0, b1 = data[offset], data[offset + 1]
-                val = (b0 << 8) | b1
-                if val & 0x8000:
-                    val |= ~0xFFFF
-            else:
-                val = 0
-            frame.append(val)
-            offset += sample_size
-        samples.append(frame)
+    if expected == 0:
+        samples = np.zeros((n_samples, n_channels), dtype=np.int32)
+    else:
+        buf = np.frombuffer(data, dtype=np.uint8).reshape(-1, sample_size).astype(np.int32)
+        if sample_size == 3:
+            val = (buf[:, 0] << 16) | (buf[:, 1] << 8) | buf[:, 2]
+            val = np.where(val & 0x800000, val - 0x1000000, val)   # sign-extend 24-bit
+        else:  # 2
+            val = (buf[:, 0] << 8) | buf[:, 1]
+            val = np.where(val & 0x8000, val - 0x10000, val)       # sign-extend 16-bit
+        samples = val.reshape(n_samples, n_channels).astype(np.int32)
+
     return {
         "ch_mask": ch_mask,
         "n_samples": n_samples,

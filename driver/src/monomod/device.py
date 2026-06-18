@@ -21,7 +21,8 @@ from typing import Callable, Optional
 import numpy as np
 
 from .control import TcpControl
-from .receiver import UdpReceiver
+from . import receiver
+from .receiver import ReceiverHandle
 from .discovery import discover_devices as _discover
 from .config import load_config, get_sample_rate
 from . import protocol as proto
@@ -33,13 +34,20 @@ class Device:
 
     def __init__(self):
         self._ctrl = TcpControl()
-        self._rx: Optional[UdpReceiver] = None
+        self._rx: Optional[ReceiverHandle] = None
+        self._ip: Optional[str] = None
         self._info: Optional[dict] = None
         self._streaming = False
 
         # Callbacks
         self._data_cb: Optional[Callable] = None
         self._imu_cb: Optional[Callable] = None
+        self._status_cb: Optional[Callable] = None
+        self.latest_status: Optional[dict] = None
+
+        # Clock sync: host_wall ≈ device_ts_us*1e-6 + clock_offset_s
+        self.clock_offset_s: Optional[float] = None
+        self.clock_rtt_s: Optional[float] = None
 
         # Thread-safe sample queue for GUI consumption
         self._queue: deque = deque(maxlen=8192)
@@ -78,11 +86,11 @@ class Device:
         if not self._ctrl.connect(ip, timeout=timeout):
             return False
 
-        # Start UDP receiver
-        self._rx = UdpReceiver()
-        self._rx.on_data = self._on_data
-        self._rx.on_imu = self._on_imu
-        self._rx.start()
+        # Register with the shared UDP receiver (demuxes by this device's IP)
+        self._ip = ip
+        self._rx = receiver.register(ip, on_data=self._on_data,
+                                     on_imu=self._on_imu,
+                                     on_status=self._on_status)
 
         # Fetch device info
         self._info = self._ctrl.get_info()
@@ -93,11 +101,14 @@ class Device:
         if self._streaming:
             self.stop()
         if self._rx:
-            self._rx.stop()
-            self._rx.join(timeout=1.0)
+            receiver.unregister(self._ip)
             self._rx = None
         self._ctrl.close()
         self._info = None
+        # Drop the clock offset — the device may reboot (esp_timer resets to 0),
+        # so a stale offset would be wrong. Re-synced on the next connect/start.
+        self.clock_offset_s = None
+        self.clock_rtt_s = None
 
     @property
     def is_connected(self) -> bool:
@@ -174,13 +185,18 @@ class Device:
         return ok
 
     def enable_imu(self, rate_hz: int = 100) -> bool:
-        """Enable BNO085 IMU streaming."""
+        """Enable IMU streaming at rate_hz (assumes a 1 kHz base divider)."""
         rate_div = max(1, 1000 // rate_hz)
         return self._ctrl.set_imu(True, rate_div)
 
     def disable_imu(self) -> bool:
         """Disable IMU streaming."""
         return self._ctrl.set_imu(False)
+
+    def set_imu(self, enable: bool = True, rate_div: int = 1) -> bool:
+        """Low-level SET_IMU: on the LIS3DH node, rate_div = number of EMG samples
+        per emitted accel sample (i.e. accel_rate = emg_rate / rate_div)."""
+        return self._ctrl.set_imu(enable, max(1, int(rate_div)))
 
     # ---- Callbacks ----
 
@@ -191,6 +207,10 @@ class Device:
     def set_imu_callback(self, cb: Callable):
         """Set callback: cb(imu_data: dict, timestamp_us: int)"""
         self._imu_cb = cb
+
+    def set_status_callback(self, cb: Callable):
+        """Set callback: cb(status: dict, timestamp_us: int)"""
+        self._status_cb = cb
 
     # ---- Queue-based access (for GUI) ----
 
@@ -229,6 +249,33 @@ class Device:
     def ping(self) -> float | None:
         return self._ctrl.ping()
 
+    def sync_clock(self, n: int = 5) -> bool:
+        """Estimate the device→host clock offset using the lowest-RTT of n pings
+        (NTP-style). Sets clock_offset_s / clock_rtt_s. Returns True on success."""
+        import time
+        best_rtt = None
+        for _ in range(max(1, n)):
+            res = self._ctrl.ping_clock()
+            if res is None:
+                continue
+            rtt, dev_ts = res
+            if best_rtt is None or rtt < best_rtt:
+                best_rtt = rtt
+                # device stamped ~rtt/2 before this reply arrived
+                host_at_device = time.time() - rtt / 2.0
+                self.clock_offset_s = host_at_device - dev_ts * 1e-6
+        if best_rtt is None:
+            return False
+        self.clock_rtt_s = best_rtt
+        return True
+
+    def device_to_host(self, ts_us: int) -> float | None:
+        """Map a device µs timestamp to host wall-clock seconds (None if unsynced).
+        Note: device ts is 32-bit µs (wraps ~71 min); valid near the sync time."""
+        if self.clock_offset_s is None:
+            return None
+        return ts_us * 1e-6 + self.clock_offset_s
+
     # ---- Internal callbacks ----
 
     def _on_data(self, samples: np.ndarray, timestamp_us: int, seq: int):
@@ -254,6 +301,12 @@ class Device:
             self._data_cb(samples, timestamp_us, seq)
 
     def _on_imu(self, imu_data: dict, timestamp_us: int):
-        """Called by UdpReceiver thread when IMU data arrives."""
+        """Called by the RX thread when IMU data arrives."""
         if self._imu_cb:
             self._imu_cb(imu_data, timestamp_us)
+
+    def _on_status(self, status: dict, timestamp_us: int):
+        """Called by the RX thread when a STATUS packet arrives."""
+        self.latest_status = status
+        if self._status_cb:
+            self._status_cb(status, timestamp_us)

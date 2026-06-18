@@ -1,8 +1,13 @@
-# ESP-IDF firmware
+# ESP-IDF firmware (covers all nested projects: main, lis3dh_node, bringup/*)
+firmware/**/build/
 firmware/build/
-firmware/sdkconfig.old
-firmware/managed_components/
-firmware/dependencies.lock
+firmware/**/managed_components/
+firmware/**/sdkconfig.old
+firmware/**/dependencies.lock
+# generated per-project config (regenerated from sdkconfig.defaults); main's
+# sdkconfig is already tracked, so only ignore the new nested projects'
+firmware/lis3dh_node/sdkconfig
+firmware/bringup/**/sdkconfig
 
 # Clangd / compile_commands
 .cache/

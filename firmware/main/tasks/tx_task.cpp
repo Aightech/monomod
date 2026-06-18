@@ -35,21 +35,21 @@ static size_t send_one_packet(TxContext *ctx, const SampleFrame *frames,
     uint8_t n_ch     = frames[0].num_channels;
 
     // Header
-    axon_header_t *hdr = (axon_header_t *)packet;
-    hdr->magic = AXON_MAGIC;
-    hdr->type = AXON_TYPE_DATA_RAW;
+    monomod_header_t *hdr = (monomod_header_t *)packet;
+    hdr->magic = MONOMOD_MAGIC;
+    hdr->type = MONOMOD_TYPE_DATA_RAW;
     hdr->seq = ctx->seq++;
     hdr->timestamp = frames[0].timestamp_us;
 
     // Data header — channel mask = low n_ch bits
-    axon_data_header_t *dhdr = (axon_data_header_t *)(packet + AXON_HEADER_SIZE);
+    monomod_data_header_t *dhdr = (monomod_data_header_t *)(packet + MONOMOD_HEADER_SIZE);
     dhdr->ch_mask = (1U << n_ch) - 1;
     dhdr->n_samples = (uint8_t)count;
     dhdr->adc_type = adc_type;
 
-    uint8_t *data = packet + AXON_HEADER_SIZE + sizeof(axon_data_header_t);
+    uint8_t *data = packet + MONOMOD_HEADER_SIZE + sizeof(monomod_data_header_t);
 
-    if (adc_type == AXON_ADC_TYPE_ADS1293) {
+    if (adc_type == MONOMOD_ADC_TYPE_ADS1293) {
         // 24-bit signed samples, big-endian, interleaved
         for (size_t s = 0; s < count; s++) {
             for (uint8_t ch = 0; ch < n_ch; ch++) {
@@ -59,7 +59,7 @@ static size_t send_one_packet(TxContext *ctx, const SampleFrame *frames,
                 *data++ = (uint8_t)( v        & 0xFF);
             }
         }
-    } else if (adc_type == AXON_ADC_TYPE_INA) {
+    } else if (adc_type == MONOMOD_ADC_TYPE_INA) {
         // 16-bit signed samples, big-endian, 1 channel
         for (size_t s = 0; s < count; s++) {
             int16_t v = (int16_t)frames[s].samples[0];
@@ -72,7 +72,7 @@ static size_t send_one_packet(TxContext *ctx, const SampleFrame *frames,
 
     size_t pkt_len = data - packet;
     crc16_append(packet, pkt_len);
-    pkt_len += AXON_CRC_SIZE;
+    pkt_len += MONOMOD_CRC_SIZE;
 
     ctx->net->send_udp(packet, pkt_len);
     return pkt_len;
@@ -80,10 +80,10 @@ static size_t send_one_packet(TxContext *ctx, const SampleFrame *frames,
 
 static void tx_task_func(void *arg) {
     TxContext *ctx = (TxContext *)arg;
-    uint8_t packet[AXON_MAX_PACKET_SIZE];
+    uint8_t packet[MONOMOD_MAX_PACKET_SIZE];
 
-    const size_t theoretical_max = AXON_MAX_SAMPLES_PER_PACKET(
-        ADS1293_NUM_CHANNELS, AXON_ADS1293_SAMPLE_SIZE);
+    const size_t theoretical_max = MONOMOD_MAX_SAMPLES_PER_PACKET(
+        ADS1293_NUM_CHANNELS, MONOMOD_ADS1293_SAMPLE_SIZE);
     const size_t max_samples = (theoretical_max < TX_MAX_SAMPLES_PER_PKT)
                              ? theoretical_max : TX_MAX_SAMPLES_PER_PKT;
 

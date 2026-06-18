@@ -1,0 +1,6 @@
+dependencies:
+  idf:
+    version: ">=5.0"
+  # WS2812/NeoPixel driver. Pinned to the 2.x API used in main.c
+  # (led_pixel_format / led_model fields); 3.x renamed these.
+  espressif/led_strip: ">=2.4.0,<3.0.0"

@@ -1,0 +1,26 @@
+# MONOMOD LIS3DH node — XIAO ESP32-C3
+CONFIG_IDF_TARGET="esp32c3"
+
+# XIAO C3 has no UART bridge: console + flashing + WiFi provisioning over USB
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# FreeRTOS at 1 kHz so a 1 ms vTaskDelayUntil gives a clean 1 kHz EMG loop
+CONFIG_FREERTOS_HZ=1000
+CONFIG_FREERTOS_UNICORE=y
+
+# WiFi / LWIP — mirror the main firmware's UDP-streaming tuning
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=y
+CONFIG_LWIP_UDP_RECVMBOX_SIZE=32
+
+# Stack sizes — the IDF defaults are too small for the WiFi/IP event-handler
+# call chain (sys_evt overflowed in vfprintf). Match the main firmware.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Task watchdog: panic+reboot if a registered task (e.g. tx stuck in sendto)
+# starves the scheduler. The tx task subscribes via esp_task_wdt_add().
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_PANIC=y
+
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

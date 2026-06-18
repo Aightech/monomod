@@ -9,7 +9,7 @@
  * @brief Start the IMU streaming task
  *
  * Polls ICM-20948 at configured rate, packs raw accel + gyro into
- * AXON_TYPE_IMU packets, sends via UDP.
+ * MONOMOD_TYPE_IMU packets, sends via UDP.
  *
  * @param imu ICM-20948 driver handle (already initialized)
  * @param net NetworkManager for UDP sending

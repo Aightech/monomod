@@ -2,7 +2,7 @@
  * @file network_manager.cpp
  * @brief Network Manager implementation for MONOMOD
  *
- * Adapted from axonCtrl. Changes:
+ * UDP streaming + TCP control + mDNS discovery. Notes:
  * - mDNS service: _monomod._udp
  * - ADC type: ADS1293
  * - No core pinning (ESP32-C3 is single-core)
@@ -15,7 +15,18 @@
 #include "esp_timer.h"
 #include "mdns.h"
 #include "crc16.h"
-#include "config.hpp"
+
+// Self-contained defaults (previously pulled from the main firmware's
+// config.hpp; inlined so this is a standalone, reusable component).
+#ifndef FW_VERSION_STR
+#define FW_VERSION_STR  "1.0.0"
+#endif
+#ifndef STACK_TCP
+#define STACK_TCP       4096
+#endif
+#ifndef PRIO_TCP
+#define PRIO_TCP        8
+#endif
 
 static const char *TAG = "NET";
 
@@ -33,11 +44,11 @@ esp_err_t NetworkManager::init(const NetworkConfig &config) {
 
     config_ = config;
 
-    // Hostname with MAC suffix: monomod-XXYY
+    // Hostname with full MAC suffix (all 6 octets) — collision-proof across a fleet
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    snprintf(full_hostname_, sizeof(full_hostname_), "%s-%02X%02X",
-             config_.hostname, mac[4], mac[5]);
+    snprintf(full_hostname_, sizeof(full_hostname_), "%s-%02X%02X%02X%02X%02X%02X",
+             config_.hostname, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     ESP_LOGI(TAG, "Init network (hostname: %s)", full_hostname_);
 
@@ -140,9 +151,13 @@ esp_err_t NetworkManager::init_mdns() {
     // TXT records
     char ch_str[4];
     snprintf(ch_str, sizeof(ch_str), "%d", config_.num_channels);
+    const char *adc_str =
+        (config_.adc_type == MONOMOD_ADC_TYPE_INA)     ? "INA"     :
+        (config_.adc_type == MONOMOD_ADC_TYPE_ADS1299) ? "ADS1299" :
+        (config_.adc_type == MONOMOD_ADC_TYPE_RHD2132) ? "RHD2132" : "ADS1293";
     mdns_txt_item_t txt[] = {
         { "version", FW_VERSION_STR },
-        { "adc",     "ADS1293" },
+        { "adc",     (char *)adc_str },
         { "ch",      ch_str },
     };
     mdns_service_txt_set("_monomod", "_udp", txt, 3);
@@ -207,6 +222,7 @@ void NetworkManager::tcp_task_run() {
 
         close(tcp_client_);
         tcp_client_ = -1;
+        client_valid_ = false;   // stop targeting a disconnected client over UDP
         ESP_LOGI(TAG, "Client disconnected");
     }
 }
@@ -228,32 +244,48 @@ void NetworkManager::handle_tcp_client(int sock) {
     setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &ka_intvl, sizeof(ka_intvl));
     setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &ka_cnt, sizeof(ka_cnt));
 
+    // TCP is a byte stream: a command may arrive split across recv() calls or
+    // (in theory) coalesced. Accumulate into rx_buf_ and extract complete
+    // packets. The host is synchronous (send → wait for ACK), so the common
+    // case is exactly one packet per accumulation; we resync on MAGIC and
+    // validate by CRC over the buffer, waiting for more bytes if it doesn't yet.
+    size_t acc = 0;
     while (tcp_running_) {
-        ssize_t len = recv(sock, rx_buf_, sizeof(rx_buf_), 0);
-        if (len < 0) {
+        ssize_t n = recv(sock, rx_buf_ + acc, sizeof(rx_buf_) - acc, 0);
+        if (n < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) continue;  // idle, not dead
             break;  // real error
         }
-        if (len == 0) break;  // peer closed
+        if (n == 0) break;  // peer closed
+        acc += (size_t)n;
 
-        // Validate packet
-        if (len < AXON_HEADER_SIZE + AXON_CRC_SIZE) continue;
-        uint16_t magic = rx_buf_[0] | (rx_buf_[1] << 8);
-        if (magic != AXON_MAGIC) continue;
-        if (!crc16_verify(rx_buf_, len)) {
-            ESP_LOGW(TAG, "CRC mismatch");
-            continue;
-        }
-
-        // Dispatch command
-        if (cmd_callback_) {
-            size_t resp_len = 0;
-            cmd_callback_(rx_buf_, len - AXON_CRC_SIZE, tx_buf_, &resp_len);
-            if (resp_len > 0) {
-                crc16_append(tx_buf_, resp_len);
-                resp_len += AXON_CRC_SIZE;
-                send(sock, tx_buf_, resp_len, 0);
+        for (;;) {
+            // Resync to the 2-byte MAGIC at the front of the accumulator.
+            if (acc >= 1 && rx_buf_[0] != MONOMOD_MAGIC_BYTE0) {
+                memmove(rx_buf_, rx_buf_ + 1, --acc); continue;
             }
+            if (acc >= 2 && rx_buf_[1] != MONOMOD_MAGIC_BYTE1) {
+                memmove(rx_buf_, rx_buf_ + 1, --acc); continue;
+            }
+            if (acc < MONOMOD_HEADER_SIZE + 1 + MONOMOD_CRC_SIZE) break;  // need more
+
+            if (crc16_verify(rx_buf_, acc)) {           // complete, valid packet
+                if (cmd_callback_) {
+                    size_t resp_len = 0;
+                    cmd_callback_(rx_buf_, acc - MONOMOD_CRC_SIZE, tx_buf_, &resp_len);
+                    if (resp_len > 0) {
+                        crc16_append(tx_buf_, resp_len);
+                        send(sock, tx_buf_, resp_len + MONOMOD_CRC_SIZE, 0);
+                    }
+                }
+                acc = 0;
+                break;
+            }
+            if (acc >= sizeof(rx_buf_)) {               // full and still invalid
+                ESP_LOGW(TAG, "RX buffer full / CRC invalid — resync");
+                acc = 0;
+            }
+            break;  // otherwise wait for more bytes
         }
     }
 }
@@ -268,6 +300,11 @@ esp_err_t NetworkManager::send_udp(const uint8_t *data, size_t len) {
     ssize_t sent = sendto(udp_socket_, data, len, 0,
                           (struct sockaddr *)&client_addr_, sizeof(client_addr_));
     if (sent < 0) {
+        // A link-down errno means WiFi dropped — flag it so the app can stop
+        // streaming and recover instead of discarding samples silently.
+        if (errno == ENETDOWN || errno == ENETUNREACH || errno == EHOSTUNREACH) {
+            link_error_ = true;
+        }
         // Rate-limited logging — repeated errors (WiFi hiccup, queue full)
         // should be visible but not spam the log every ~10ms.
         static uint32_t last_err_log = 0;

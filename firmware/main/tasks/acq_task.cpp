@@ -30,10 +30,10 @@ static void IRAM_ATTR acq_timer_cb(void *arg) {
     // samples. If no new conversion happened, the Python host sees duplicate
     // values (easy to spot). This is less aggressive than gating on status.
     SampleFrame frame = {};
-    frame.timestamp_us = axon::get_timestamp_us();
+    frame.timestamp_us = monomod::get_timestamp_us();
     frame.sequence = ctx->sequence++;
     frame.num_channels = ADS1293_NUM_CHANNELS;
-    frame.adc_type = AXON_ADC_TYPE_ADS1293;
+    frame.adc_type = MONOMOD_ADC_TYPE_ADS1293;
     frame.samples[0] = sample.precise[0];
     frame.samples[1] = sample.precise[1];
     frame.samples[2] = sample.precise[2];
@@ -102,10 +102,10 @@ static void ina_task_func(void *arg) {
         }
         for (int i = 0; i < n; i++) {
             SampleFrame frame = {};
-            frame.timestamp_us = axon::get_timestamp_us();
+            frame.timestamp_us = monomod::get_timestamp_us();
             frame.sequence = ctx->sequence++;
-            frame.num_channels = AXON_INA_NUM_CHANNELS;
-            frame.adc_type = AXON_ADC_TYPE_INA;
+            frame.num_channels = MONOMOD_INA_NUM_CHANNELS;
+            frame.adc_type = MONOMOD_ADC_TYPE_INA;
             frame.samples[0] = (int32_t)buf[i];   // only ch0
             ctx->ring->push_overwrite(frame);
         }

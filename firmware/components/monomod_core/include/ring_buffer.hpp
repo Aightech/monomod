@@ -2,7 +2,7 @@
  * @file ring_buffer.hpp
  * @brief Lock-free SPSC Ring Buffer for MONOMOD
  *
- * Adapted from AxonCtrl ring_buffer.hpp with smaller SampleFrame
+ * Adapted from MONOMOD ring_buffer.hpp with smaller SampleFrame
  * for the 3-channel ADS1293.
  */
 
@@ -18,7 +18,7 @@
  * @brief Sample frame — one sample from all enabled channels
  *
  * Sized for ADS1293 (3 channels max) + headroom.
- * sizeof(SampleFrame) ≈ 48 bytes (vs 140 in axonCtrl's 32-channel version)
+ * sizeof(SampleFrame) ≈ 48 bytes (vs 140 in MONOMOD's 32-channel version)
  */
 struct SampleFrame {
     uint32_t timestamp_us;

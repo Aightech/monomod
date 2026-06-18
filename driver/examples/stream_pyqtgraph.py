@@ -33,7 +33,7 @@ CHANNEL_COLORS = [(200, 200, 200), (255, 180, 0), (0, 180, 255)]
 
 
 class LivePlot(pg.PlotWidget):
-    """Minimal plot — copy of axonCtrl's PlotArea pattern."""
+    """Minimal plot — copy of MONOMOD's PlotArea pattern."""
 
     def __init__(self):
         super().__init__()
@@ -45,7 +45,7 @@ class LivePlot(pg.PlotWidget):
         self.setDownsampling(auto=True, mode="peak")
         self.setClipToView(True)
 
-        # Curves — axonCtrl pattern
+        # Curves — MONOMOD pattern
         self.curves = []
         for i in range(NUM_CHANNELS):
             c = pg.PlotCurveItem(
@@ -81,7 +81,7 @@ class LivePlot(pg.PlotWidget):
             self._y[:-dn, :nch] = self._y[dn:, :nch]
             self._y[-dn:, :nch] = arr[:, :nch]
         self._samples_written += dn
-        self._x += dn / float(DISPLAY_HZ)  # axonCtrl: X grows over time
+        self._x += dn / float(DISPLAY_HZ)  # MONOMOD: X grows over time
 
     def redraw(self):
         if self._samples_written < 10:
@@ -106,7 +106,7 @@ class LivePlot(pg.PlotWidget):
             y = self._y[::ds, i]
             self.curves[i].setData(x, (y - self._dc[i]) * ys + (i * CHANNEL_SPACING))
 
-        # Follow X (axonCtrl pattern)
+        # Follow X (MONOMOD pattern)
         xmin, xmax = float(self._x[0]), float(self._x[-1])
         xmin = round(xmin * 10.0) / 10.0
         xmax = round(xmax * 10.0) / 10.0

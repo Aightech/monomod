@@ -12,7 +12,7 @@
 #include "esp_timer.h"
 #include "esp_attr.h"
 
-namespace axon {
+namespace monomod {
 
 /**
  * @brief Get current timestamp in microseconds since boot
@@ -120,4 +120,4 @@ private:
     uint32_t epoch_;
 };
 
-}  // namespace axon
+}  // namespace monomod

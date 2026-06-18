@@ -82,3 +82,69 @@ def load_session(path: str) -> dict:
     with open(path) as f:
         cfg = yaml.safe_load(f)
     return cfg.get("session", cfg)
+
+
+def load_raw(path: str) -> dict:
+    """Load the full YAML document unmodified (device/wifi/emg/session/...)."""
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge `override` onto a deep copy of `base`."""
+    out = copy.deepcopy(base) if isinstance(base, dict) else {}
+    for k, v in (override or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = copy.deepcopy(v)
+    return out
+
+
+def iter_session_devices(cfg: dict):
+    """Yield {ip, name, location, emg} for each device in cfg['session'].
+
+    Each device's EMG config is the top-level `emg` with the device's own `emg`
+    override merged on top, then completed against defaults via _merge_emg.
+    """
+    top_emg = cfg.get("emg", {}) or {}
+    session = cfg.get("session", {}) or {}
+    devices = session.get("devices", []) if isinstance(session, dict) else []
+    for d in devices:
+        if not isinstance(d, dict) or "ip" not in d:
+            continue
+        merged = _deep_merge(top_emg, d.get("emg", {}))
+        yield {
+            "ip": str(d["ip"]),
+            "name": d.get("name"),
+            "location": d.get("location"),
+            "emg": _merge_emg(merged),
+        }
+
+
+def get_recording(cfg: dict) -> dict:
+    """Recording prefs with defaults."""
+    r = cfg.get("recording", {}) or {}
+    return {
+        "format": r.get("format", "csv"),
+        "path_template": r.get("path_template",
+                               "monomod_{subject}_{session}_{timestamp}.csv"),
+        "include_imu": bool(r.get("include_imu", True)),
+    }
+
+
+def get_experiment(cfg: dict) -> dict:
+    """Experiment metadata (subject/session/operator/notes/markers)."""
+    return cfg.get("experiment", {}) or {}
+
+
+def get_gui(cfg: dict) -> dict:
+    """GUI display prefs with defaults."""
+    g = cfg.get("gui", {}) or {}
+    return {
+        "default_view": g.get("default_view", "EMG only"),
+        "window_sec": g.get("window_sec", 5.0),
+        "display_hz": g.get("display_hz", 200),
+        "channel_spacing": g.get("channel_spacing", 100.0),
+        "auto_scale_on_start": bool(g.get("auto_scale_on_start", True)),
+    }

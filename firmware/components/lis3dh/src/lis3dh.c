@@ -133,3 +133,25 @@ esp_err_t lis3dh_read_accel(lis3dh_t *dev, int16_t *x, int16_t *y, int16_t *z) {
     *z = (int16_t)((buf[5] << 8) | buf[4]);
     return ESP_OK;
 }
+
+esp_err_t lis3dh_set_odr(lis3dh_t *dev, uint8_t odr_code) {
+    if (!dev->initialized) return ESP_ERR_INVALID_STATE;
+    // normal mode (LPen=0), all three axes enabled
+    write_reg(dev, REG_CTRL_REG1,
+              (uint8_t)((odr_code & 0x0F) << 4) | CTRL1_X_EN | CTRL1_Y_EN | CTRL1_Z_EN);
+    return ESP_OK;
+}
+
+esp_err_t lis3dh_enable_adc(lis3dh_t *dev) {
+    if (!dev->initialized) return ESP_ERR_INVALID_STATE;
+    write_reg(dev, LIS3DH_REG_TEMP_CFG, 0x80);  // ADC_EN=1, TEMP_EN=0
+    return ESP_OK;
+}
+
+esp_err_t lis3dh_read_adc1(lis3dh_t *dev, int16_t *out) {
+    if (!dev->initialized) return ESP_ERR_INVALID_STATE;
+    uint8_t buf[2];
+    read_regs(dev, LIS3DH_REG_OUT_ADC1_L, buf, 2);
+    *out = (int16_t)((buf[1] << 8) | buf[0]);
+    return ESP_OK;
+}

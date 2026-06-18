@@ -32,16 +32,16 @@ static void imu_task_func(void *arg) {
         }
 
         // Build IMU packet with standard 12-byte raw payload
-        uint8_t packet[AXON_HEADER_SIZE + sizeof(axon_imu_payload_t) + AXON_CRC_SIZE];
+        uint8_t packet[MONOMOD_HEADER_SIZE + sizeof(monomod_imu_payload_t) + MONOMOD_CRC_SIZE];
 
-        axon_header_t *hdr = (axon_header_t *)packet;
-        hdr->magic = AXON_MAGIC;
-        hdr->type = AXON_TYPE_IMU;
+        monomod_header_t *hdr = (monomod_header_t *)packet;
+        hdr->magic = MONOMOD_MAGIC;
+        hdr->type = MONOMOD_TYPE_IMU;
         hdr->seq = ctx->seq++;
-        hdr->timestamp = axon::get_timestamp_us();
+        hdr->timestamp = monomod::get_timestamp_us();
 
-        axon_imu_payload_t *pl =
-            (axon_imu_payload_t *)(packet + AXON_HEADER_SIZE);
+        monomod_imu_payload_t *pl =
+            (monomod_imu_payload_t *)(packet + MONOMOD_HEADER_SIZE);
         pl->accel_x = raw.accel_x;
         pl->accel_y = raw.accel_y;
         pl->accel_z = raw.accel_z;
@@ -50,9 +50,9 @@ static void imu_task_func(void *arg) {
         pl->gyro_z  = raw.gyro_z;
 
         // CRC
-        size_t pkt_len = AXON_HEADER_SIZE + sizeof(axon_imu_payload_t);
+        size_t pkt_len = MONOMOD_HEADER_SIZE + sizeof(monomod_imu_payload_t);
         crc16_append(packet, pkt_len);
-        pkt_len += AXON_CRC_SIZE;
+        pkt_len += MONOMOD_CRC_SIZE;
 
         ctx->net->send_udp(packet, pkt_len);
 

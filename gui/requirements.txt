@@ -3,3 +3,5 @@ pyyaml
 pyqt6
 pyqtgraph
 zeroconf
+pylsl
+h5py

@@ -4,12 +4,11 @@ idf_component_register(
         "tasks/acq_task.cpp"
         "tasks/tx_task.cpp"
         "tasks/imu_task.cpp"
-        "network/network_manager.cpp"
     INCLUDE_DIRS
         "."
         "tasks"
-        "network"
     REQUIRES
+        monomod_board
         ads1293
         ina_emg
         lis3dh
@@ -17,6 +16,7 @@ idf_component_register(
         monomod_protocol
         monomod_core
         monomod_drivers
+        monomod_net
         esp_timer
         esp_wifi
         esp_netif
